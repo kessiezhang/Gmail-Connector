@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# gmail-cli — bash shim.
+#
+# Ensures a local virtualenv exists with the project's pinned dependencies,
+# then execs the Python entrypoint. Plain `python3` + `pip` only — no nix,
+# no pipx, no uv. Works on macOS and Linux out of the box; on Windows runs
+# under Git Bash / WSL.
+
+set -euo pipefail
+
+SKILL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+VENV_DIR="${SKILL_DIR}/.venv"
+PY_ENTRY="${SKILL_DIR}/gmail_cli.py"
+REQS="${SKILL_DIR}/requirements.txt"
+STAMP="${VENV_DIR}/.requirements.sha"
+
+PYTHON="${GMAIL_CLI_PYTHON:-python3}"
+
+if ! command -v "$PYTHON" >/dev/null 2>&1; then
+  printf 'gmail-cli: %s not found on PATH. Install Python 3.10+ or set GMAIL_CLI_PYTHON.\n' "$PYTHON" >&2
+  exit 127
+fi
+
+pip_install() {
+  # PIP_USER=1 in the user's env breaks venv installs ("Can not perform a
+  # '--user' install"). Force it off for installs into our venv.
+  PIP_USER=0 PIP_REQUIRE_VIRTUALENV=0 "$VENV_DIR/bin/pip" "$@"
+}
+
+ensure_venv() {
+  if [[ ! -d "$VENV_DIR" ]]; then
+    printf 'gmail-cli: creating virtualenv at %s\n' "$VENV_DIR" >&2
+    "$PYTHON" -m venv "$VENV_DIR"
+    pip_install install --quiet --upgrade pip
+  fi
+}
+
+reqs_hash() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$REQS" | awk '{print $1}'
+  else
+    sha256sum "$REQS" | awk '{print $1}'
+  fi
+}
+
+ensure_deps() {
+  local current
+  current="$(reqs_hash)"
+  if [[ ! -f "$STAMP" || "$(cat "$STAMP" 2>/dev/null)" != "$current" ]]; then
+    printf 'gmail-cli: installing dependencies\n' >&2
+    pip_install install --quiet -r "$REQS"
+    printf '%s' "$current" > "$STAMP"
+  fi
+}
+
+ensure_venv
+ensure_deps
+
+exec "$VENV_DIR/bin/python" "$PY_ENTRY" "$@"

@@ -1,0 +1,5 @@
+google-api-python-client>=2.120,<3
+google-auth-oauthlib>=1.2,<2
+keyring>=24,<26
+rich>=13,<14
+tomli>=2.0,<3 ; python_version < "3.11"
